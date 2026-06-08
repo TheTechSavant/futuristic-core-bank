@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ cms.header_title }} Dashboard</title>
+    <style>
+        :root {
+            --bg: {{ cms.background_color or '#0A0E27' }};
+            --glass: {{ cms.glass_bg or 'rgba(10,14,39,0.75)' }};
+            --primary: {{ cms.primary_color or '#00F0FF' }};
+            --secondary: {{ cms.secondary_color or '#FF00C8' }};
+            --text: {{ cms.text_color or '#FFFFFF' }};
+            --muted: {{ cms.muted_text or '#A0AEC0' }};
+        }
+        * { box-sizing: border-box; margin:0; padding:0; }
+        body {
+            font-family: {{ cms.font_family or 'Inter, sans-serif' }};
+            background: var(--bg); color: var(--text);
+            min-height: 100vh;
+            background-image: url('{{ cms.hero_image_url or '' }}') center/cover no-repeat;
+            background-attachment: fixed;
+        }
+        .glass {
+            background: var(--glass); backdrop-filter: blur(20px);
+            border: 1px solid rgba(255,255,255,0.2); border-radius: 16px;
+        }
+        header {
+            padding: 1.5rem 2rem;
+            display: flex; justify-content: space-between; align-items: center;
+            background: rgba(0,0,0,0.6); backdrop-filter: blur(15px);
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+        header h1 { color: var(--primary); font-weight: 700; }
+        nav a { color: var(--muted); text-decoration: none; margin-left: 2rem; transition: 0.2s; }
+        nav a:hover { color: var(--primary); }
+        .container { max-width: 1200px; margin: 2rem auto; padding: 0 2rem; display: grid; gap: 2rem; }
+        .balance-card {
+            text-align: center; padding: 2rem;
+            background: linear-gradient(135deg, rgba(0,240,255,0.15), rgba(255,0,200,0.15));
+        }
+        .balance-amount { font-size: 3rem; font-weight: 800; color: var(--primary); margin: 0.5rem 0; }
+        .grid-2col { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 0.75rem; text-align: left; border-bottom: 1px solid rgba(255,255,255,0.1); }
+        .badge { padding: 0.2rem 0.8rem; border-radius: 20px; font-size: 0.8rem; }
+        .badge-deposit { background: rgba(0,240,255,0.2); color: var(--primary); }
+        .badge-withdrawal { background: rgba(255,0,200,0.2); color: var(--secondary); }
+        .chart-container { height: 300px; }
+        @media (max-width: 768px) { .grid-2col { grid-template-columns: 1fr; } }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <header>
+        <h1><img src="{{ cms.logo_url }}" alt="Logo" style="height:40px; vertical-align:middle;"> {{ cms.header_title }}</h1>
+        <nav>
+            <a href="#">Dashboard</a>
+            <a href="#profile">Profile</a>
+            <a href="/api/logout">Logout</a>
+        </nav>
+    </header>
+
+    <div class="container">
+        <div class="glass balance-card">
+            <h2>{{ cms.header_subtitle or 'Your Balance' }}</h2>
+            <div class="balance-amount" id="balanceDisplay">$0.00</div>
+            <p style="color: var(--muted);">Account: <span id="accNumber">-</span></p>
+        </div>
+
+        <div class="grid-2col">
+            <div class="glass" style="padding:1.5rem;">
+                <h3 style="color: var(--secondary); margin-bottom:1rem;">📊 Financial Overview</h3>
+                <div class="chart-container"><canvas id="txChart"></canvas></div>
+            </div>
+            <div class="glass" style="padding:1.5rem;">
+                <h3 style="color: var(--secondary); margin-bottom:1rem;">📋 Recent Transactions</h3>
+                <table id="txTable"><thead><tr><th>Type</th><th>Amount</th><th>Description</th><th>Date</th></tr></thead><tbody></tbody></table>
+            </div>
+        </div>
+
+        <div class="glass" id="profile" style="padding:1.5rem;">
+            <h3 style="color: var(--secondary);">👤 Profile</h3>
+            <p>Name: <span id="profileName">-</span></p>
+            <p>Email: <span id="profileEmail">-</span></p>
+            <p>Member since: <span id="profileSince">-</span></p>
+        </div>
+    </div>
+
+    <footer style="text-align:center; padding:2rem; color:var(--muted); border-top:1px solid rgba(255,255,255,0.1); margin-top:2rem;">
+        {{ cms.footer_text }}
+    </footer>
+
+    <script>
+        async function loadDashboard() {
+            const [balRes, txnRes, profRes] = await Promise.all([
+                fetch('/api/user/balance'),
+                fetch('/api/user/transactions'),
+                fetch('/api/user/profile')
+            ]);
+            const bal = await balRes.json();
+            document.getElementById('balanceDisplay').textContent = `$${bal.balance.toFixed(2)}`;
+            document.getElementById('accNumber').textContent = bal.account_number;
+
+            const txns = await txnRes.json();
+            const tbody = document.querySelector('#txTable tbody');
+            tbody.innerHTML = txns.map(t => `
+                <tr>
+                    <td><span class="badge badge-${t.type}">${t.type}</span></td>
+                    <td>${t.amount.toFixed(2)}</td>
+                    <td>${t.description || ''}</td>
+                    <td>${new Date(t.timestamp).toLocaleDateString()}</td>
+                </tr>
+            `).join('');
+
+            // Chart using last 10 transactions for demonstration
+            const chartLabels = txns.slice(0,10).map(t => new Date(t.timestamp).toLocaleDateString()).reverse();
+            const chartData = txns.slice(0,10).map(t => t.type === 'deposit' ? t.amount : -t.amount).reverse();
+            const ctx = document.getElementById('txChart').getContext('2d');
+            new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: chartLabels,
+                    datasets: [{
+                        label: 'Cashflow',
+                        data: chartData,
+                        borderColor: '{{ cms.chart_color_1 or '#00F0FF' }}',
+                        backgroundColor: '{{ cms.chart_color_2 or '#FF00C8' }}33',
+                        tension: 0.4,
+                        pointBackgroundColor: '{{ cms.primary_color or '#00F0FF' }}'
+                    }]
+                },
+                options: { responsive: true, maintainAspectRatio: false,
+                    scales: { y: { beginAtZero: true, grid: {color: 'rgba(255,255,255,0.1)'} },
+                              x: { grid: {display: false} }
+                    }
+                }
+            });
+
+            const prof = await profRes.json();
+            document.getElementById('profileName').textContent = prof.full_name || prof.username;
+            document.getElementById('profileEmail').textContent = prof.email || 'Not set';
+            document.getElementById('profileSince').textContent = new Date(prof.created_at).toLocaleDateString();
+        }
+        loadDashboard();
+    </script>
+</body>
+</html>

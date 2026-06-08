@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Nexus | {{ cms.header_title }}</title>
+    <style>
+        :root {
+            --bg: {{ cms.background_color or '#0A0E27' }};
+            --glass: {{ cms.glass_bg or 'rgba(10,14,39,0.8)' }};
+            --primary: {{ cms.primary_color or '#00F0FF' }};
+            --secondary: {{ cms.secondary_color or '#FF00C8' }};
+            --text: {{ cms.text_color or '#FFFFFF' }};
+            --muted: {{ cms.muted_text or '#A0AEC0' }};
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: {{ cms.font_family or 'Inter, sans-serif' }};
+            background: var(--bg);
+            color: var(--text);
+            display: flex; min-height: 100vh;
+            background-image: radial-gradient(circle at 20% 20%, rgba(0,240,255,0.1) 0%, transparent 50%),
+                              radial-gradient(circle at 80% 80%, rgba(255,0,200,0.1) 0%, transparent 50%);
+        }
+        .sidebar {
+            width: 250px; background: var(--glass); backdrop-filter: blur(15px);
+            padding: 2rem 1rem; border-right: 1px solid rgba(255,255,255,0.1);
+        }
+        .sidebar h2 { color: var(--primary); font-weight: 600; margin-bottom: 2rem; }
+        .nav-item { display: block; padding: 0.75rem 1rem; color: var(--muted); text-decoration: none; border-radius: 8px; margin-bottom: 0.5rem; transition: all 0.2s; }
+        .nav-item:hover, .nav-item.active { background: rgba(0,240,255,0.1); color: var(--primary); }
+        .main { flex: 1; padding: 2rem; overflow-y: auto; }
+        .card {
+            background: var(--glass); backdrop-filter: blur(15px);
+            border-radius: 16px; border: 1px solid rgba(255,255,255,0.1);
+            padding: 1.5rem; margin-bottom: 2rem;
+        }
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.5rem; }
+        input, select, button { 
+            background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.2);
+            color: var(--text); padding: 0.75rem; border-radius: 8px; width: 100%;
+            font-family: inherit; margin-bottom: 1rem;
+        }
+        button { background: var(--primary); border: none; color: #0A0E27; font-weight: 600; cursor: pointer; transition: 0.2s; }
+        button:hover { filter: brightness(1.2); }
+        .btn-danger { background: #FF0055; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { text-align: left; padding: 0.75rem; border-bottom: 1px solid rgba(255,255,255,0.1); }
+        .badge { display: inline-block; padding: 0.2rem 0.8rem; border-radius: 20px; font-size: 0.8rem; }
+        .badge-deposit { background: rgba(0,240,255,0.2); color: var(--primary); }
+        .badge-withdrawal { background: rgba(255,0,200,0.2); color: var(--secondary); }
+        .modal { display: none; position: fixed; top:0; left:0; width:100%; height:100%; background: rgba(0,0,0,0.6); justify-content: center; align-items: center; }
+        .modal-content { background: var(--glass); backdrop-filter: blur(25px); border-radius: 20px; padding: 2rem; width: 90%; max-width: 500px; }
+        .close { float: right; font-size: 1.5rem; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <div class="sidebar">
+        <h2>⚡ Admin</h2>
+        <a href="#" class="nav-item active" data-section="users">👥 Users</a>
+        <a href="#" class="nav-item" data-section="settings">🎨 CMS Settings</a>
+        <a href="/api/logout" class="nav-item">🚪 Logout</a>
+    </div>
+    <div class="main" id="app">
+        <!-- Dynamic content injected by JS -->
+    </div>
+
+    <script>
+        const API = {
+            users: '/api/admin/users',
+            settings: '/api/admin/settings',
+            userTransactions: (uid) => `/api/admin/users/${uid}/transactions`,
+            userBalance: (uid) => `/api/admin/users/${uid}/balance`,
+        };
+
+        document.querySelectorAll('.nav-item[data-section]').forEach(item => {
+            item.addEventListener('click', (e) => {
+                e.preventDefault();
+                document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
+                item.classList.add('active');
+                loadSection(item.dataset.section);
+            });
+        });
+
+        async function loadSection(section) {
+            const app = document.getElementById('app');
+            if (section === 'users') {
+                app.innerHTML = `
+                    <div class="card"><h3>Create User</h3>
+                        <input type="text" id="newUsername" placeholder="Username">
+                        <input type="password" id="newPassword" placeholder="Password">
+                        <button onclick="createUser()">Create & Assign Account</button>
+                    </div>
+                    <div class="card"><h3>All Users</h3><table id="userTable"><thead><tr><th>ID</th><th>Username</th><th>Role</th><th>Balance</th><th>Actions</th></tr></thead><tbody></tbody></table></div>
+                    <div id="txnEditor" class="modal"><div class="modal-content"><span class="close" onclick="closeTxnEditor()">×</span><div id="txnContent"></div></div></div>
+                `;
+                await refreshUsers();
+            } else if (section === 'settings') {
+                const res = await fetch(API.settings);
+                const sets = await res.json();
+                let html = `<div class="card"><h3>Site Settings (CMS)</h3>`;
+                for (const [key, value] of Object.entries(sets)) {
+                    html += `<label>${key}</label><input type="text" class="setting-input" data-key="${key}" value="${value}">`;
+                }
+                html += `<button onclick="saveSettings()">Update All Settings</button></div>`;
+                app.innerHTML = html;
+            }
+        }
+
+        async function refreshUsers() {
+            const res = await fetch(API.users);
+            const users = await res.json();
+            const tbody = document.querySelector('#userTable tbody');
+            tbody.innerHTML = users.map(u => `
+                <tr>
+                    <td>${u.id}</td><td>${u.username}</td><td>${u.role}</td>
+                    <td>${u.balance ?? '0.00'}</td>
+                    <td>
+                        <button onclick="editBalance(${u.id}, ${u.balance})">Balance</button>
+                        <button onclick="openTxnEditor(${u.id})">Txns</button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        async function createUser() {
+            const username = document.getElementById('newUsername').value;
+            const password = document.getElementById('newPassword').value;
+            const res = await fetch(API.users, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({username, password})
+            });
+            if (res.ok) { refreshUsers(); } else { alert('Error: ' + (await res.json()).error); }
+        }
+
+        function editBalance(uid, current) {
+            const newBal = prompt('New balance:', current);
+            if (newBal !== null) {
+                fetch(API.userBalance(uid), {
+                    method: 'PUT', headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({balance: parseFloat(newBal)})
+                }).then(r => r.json()).then(d => { if(d.success) refreshUsers(); else alert(d.error); });
+            }
+        }
+
+        async function openTxnEditor(uid) {
+            const modal = document.getElementById('txnEditor');
+            const content = document.getElementById('txnContent');
+            // Fetch existing transactions
+            const res = await fetch(API.userTransactions(uid));
+            const txns = await res.json();
+            content.innerHTML = `
+                <h3>Transactions for User ${uid}</h3>
+                <table><tr><th>ID</th><th>Type</th><th>Amount</th><th>Desc</th><th>Time</th><th></th></tr>
+                ${txns.map(t => `<tr>
+                    <td>${t.id}</td><td>${t.type}</td><td>${t.amount}</td><td>${t.description}</td>
+                    <td>${new Date(t.timestamp).toLocaleString()}</td>
+                    <td><button class="btn-danger" onclick="deleteTxn(${uid}, ${t.id})">🗑</button></td>
+                </tr>`).join('')}
+                </table>
+                <h4>Inject New Transaction</h4>
+                <select id="txnType"><option value="deposit">Deposit</option><option value="withdrawal">Withdrawal</option><option value="transfer">Transfer</option></select>
+                <input type="number" id="txnAmount" placeholder="Amount" step="0.01">
+                <input type="text" id="txnDesc" placeholder="Description">
+                <input type="text" id="txnCounter" placeholder="Counterparty Account ID (for transfers)">
+                <button onclick="injectTransaction(${uid})">Inject</button>
+            `;
+            modal.style.display = 'flex';
+        }
+
+        function closeTxnEditor() {
+            document.getElementById('txnEditor').style.display = 'none';
+        }
+
+        function deleteTxn(uid, txnId) {
+            fetch(`${API.userTransactions(uid)}/${txnId}`, {method: 'DELETE'})
+                .then(r => r.json()).then(d => { if(d.success) openTxnEditor(uid); });
+        }
+
+        function injectTransaction(uid) {
+            const type = document.getElementById('txnType').value;
+            const amount = parseFloat(document.getElementById('txnAmount').value);
+            const description = document.getElementById('txnDesc').value;
+            const counterparty = document.getElementById('txnCounter').value || null;
+            fetch(API.userTransactions(uid), {
+                method: 'POST', headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({type, amount, description, counterparty_account_id: counterparty})
+            }).then(r => r.json()).then(d => { if(d.success) openTxnEditor(uid); else alert(d.error); });
+        }
+
+        async function saveSettings() {
+            const inputs = document.querySelectorAll('.setting-input');
+            const data = {};
+            inputs.forEach(inp => data[inp.dataset.key] = inp.value);
+            const res = await fetch(API.settings, {
+                method: 'POST', headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(data)
+            });
+            if (res.ok) alert('CMS updated. Refresh frontend to see changes.');
+        }
+
+        // Initial load
+        loadSection('users');
+    </script>
+</body>
+</html>
