@@ -41,6 +41,7 @@ Deploy to an Ubuntu server with a single command.
 
 Run the following commands one after the other on a fresh Ubuntu server **as root or with sudo**:
 
+```bash
 # 1. Download the installation script 
 
 ```bash
