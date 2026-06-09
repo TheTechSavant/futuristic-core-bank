@@ -39,12 +39,17 @@ Deploy to an Ubuntu server with a single command.
 
 ## 📦 Quick Install (Ubuntu 20.04/24.04)
 
-Run the following command on a fresh Ubuntu server **as root or with sudo**:
+Run the following commands one after the other on a fresh Ubuntu server **as root or with sudo**:
+
+# 1. Download the installation script 
 
 ```bash
-# 1. Download the installation script
 curl -O [https://raw.githubusercontent.com/TheTechSavant/futuristic-core-bank/main/install.sh](https://raw.githubusercontent.com/TheTechSavant/futuristic-core-bank/main/install.sh)
+```
 
 # 2. Run the script (you will be prompted for your domain and email)
+
+```bash
+
 sudo bash install.sh
 ```
