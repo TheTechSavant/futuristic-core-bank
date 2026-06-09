@@ -42,5 +42,9 @@ Deploy to an Ubuntu server with a single command.
 Run the following command on a fresh Ubuntu server **as root or with sudo**:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/TheTechSavant/futuristic-core-bank/main/install.sh | sudo bash
+# 1. Download the installation script
+curl -O [https://raw.githubusercontent.com/TheTechSavant/futuristic-core-bank/main/install.sh](https://raw.githubusercontent.com/TheTechSavant/futuristic-core-bank/main/install.sh)
+
+# 2. Run the script (you will be prompted for your domain and email)
+sudo bash install.sh
 ```
